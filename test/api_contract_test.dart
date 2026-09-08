@@ -15,6 +15,12 @@ import 'package:fynnedge/data/models/intent.dart';
 import 'package:fynnedge/data/models/loan.dart';
 import 'package:fynnedge/data/models/user.dart';
 import 'package:fynnedge/data/services/api_client.dart';
+import 'package:fynnedge/data/services/decision_service.dart';
+import 'package:fynnedge/data/models/intelligence.dart';
+import 'package:fynnedge/data/services/intelligence_service.dart';
+import 'package:fynnedge/data/models/support.dart';
+import 'package:fynnedge/data/services/support_service.dart';
+import 'package:fynnedge/data/services/deep_links.dart';
 import 'package:fynnedge/data/services/api_config.dart';
 import 'package:fynnedge/core/money/money.dart';
 import 'package:fynnedge/data/engine/financial_engine.dart';
@@ -879,11 +885,53 @@ void main() {
     }
   }, skip: skip);
 
-  test('GET /notifications sends nothing, because nothing was sent', () async {
-    // Nothing in FynnEdge writes a notification. The endpoint used to serve
-    // four seeded items, two of which made claims nobody could stand behind.
-    final notifications = await ApiNotificationService(api).getNotifications();
-    expect(notifications, isEmpty);
+  test('every notification is backed by something that happened', () async {
+    /*
+     * This used to assert the list was empty, because nothing wrote a
+     * notification. Module 29 changed that, and the assertion worth making
+     * now is stronger: everything in the list is one of the types FynnEdge
+     * actually produces from a real state change, and nothing in it makes a
+     * claim FynnEdge cannot stand behind.
+     */
+    const known = {
+      'application_started',
+      'submission_needs_confirmation',
+      'submission_status_updated',
+      'application_received',
+      'application_under_review',
+      'action_required',
+      'application_approved',
+      'application_declined',
+      'application_disbursed',
+      'application_cancelled',
+      'document_needs_review',
+      'document_ready',
+      'document_safety_issue',
+      'fynnscore_changed',
+      'goal_milestone',
+    };
+
+    final page = await ApiNotificationService(api).getNotifications();
+
+    for (final item in page.items) {
+      expect(known, contains(item.type), reason: 'unknown type ${item.type}');
+
+      final whole = '${item.title} ${item.body}'.toLowerCase();
+
+      // FynnEdge decides nothing about a loan. A provider's decision is
+      // attributed to the provider or it is not sent.
+      for (final claim in [
+        'fynnedge approved',
+        'we approved',
+        'guaranteed',
+        'instant approval',
+        'loan secured',
+        'lowest rate',
+        'best lender',
+      ]) {
+        expect(whole, isNot(contains(claim)), reason: 'claimed: $claim');
+      }
+    }
   }, skip: skip);
 
   test('OTP round-trip issues a session', () async {
@@ -1389,10 +1437,24 @@ void main() {
     );
   }, skip: skip);
 
-  test('notification read endpoints respond', () async {
+  test('reading a notification is idempotent, and someone else\'s is not found', () async {
     final service = ApiNotificationService(api);
-    await service.markRead('ntf_1');
-    await service.markAllRead();
+    final page = await service.getNotifications();
+
+    if (page.items.isNotEmpty) {
+      final id = page.items.first.id;
+
+      // Twice, because a client retrying must not be an error.
+      await service.markRead(id);
+      await service.markRead(id);
+    }
+
+    // An id that is not this customer's is not found — the same answer as
+    // an id that never existed.
+    await expectLater(
+      service.markRead('999999999'),
+      throwsA(isA<NotFoundException>()),
+    );
   }, skip: skip);
 
   test('logout revokes the token it was called with', () async {
@@ -1900,6 +1962,654 @@ void main() {
   test('the score is unavailable without a token', () async {
     await expectLater(
       ApiProfileService(ApiClient()).getFynnScore(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+  }, skip: skip);
+
+  // --- Notifications --------------------------------------------------------
+
+  test('the notification centre parses, envelope and all', () async {
+    final notifications = ApiNotificationService(api);
+
+    final page = await notifications.getNotifications();
+
+    // The meta the app pages and badges on. Both must survive the client's
+    // `data` unwrapping, which is the reason getEnvelope exists.
+    expect(page.unreadCount, isNonNegative);
+    expect(page.items.length, lessThanOrEqualTo(20));
+
+    // Whatever is there, every item parses and every link is one this
+    // build can open. A notification pointing at a screen the app does not
+    // have is a dead end for a customer.
+    for (final item in page.items) {
+      expect(item.id, isNotEmpty);
+      expect(item.title, isNotEmpty);
+      expect(item.body, isNotEmpty);
+      expect(
+        item.deepLink == null || DeepLinks.isKnown(item.deepLink),
+        isTrue,
+        reason: 'unroutable link: ${item.deepLink}',
+      );
+    }
+  }, skip: skip);
+
+  test('the unread count is its own endpoint and agrees with the page', () async {
+    final notifications = ApiNotificationService(api);
+
+    final count = await notifications.getUnreadCount();
+    final page = await notifications.getNotifications();
+
+    expect(count, page.unreadCount);
+  }, skip: skip);
+
+  test('reading everything is safe to repeat', () async {
+    final notifications = ApiNotificationService(api);
+
+    await notifications.markAllRead();
+    await notifications.markAllRead();
+
+    expect(await notifications.getUnreadCount(), 0);
+  }, skip: skip);
+
+  test('a page can be asked for by size and cursor', () async {
+    final notifications = ApiNotificationService(api);
+
+    final page = await notifications.getNotifications(limit: 1);
+    expect(page.items.length, lessThanOrEqualTo(1));
+
+    if (page.nextCursor != null) {
+      final next = await notifications.getNotifications(
+        limit: 1,
+        before: page.nextCursor,
+      );
+
+      // Strictly older, so paging cannot repeat or stall.
+      expect(next.items.first.id, isNot(page.items.first.id));
+    }
+  }, skip: skip);
+
+  test('preferences report what is actually available', () async {
+    final prefs = await ApiNotificationService(api).getPreferences();
+
+    // NO PUSH PROVIDER IS CONNECTED, and FynnEdge sends no marketing. The
+    // API says both rather than the app assuming either.
+    expect(prefs.pushAvailable, isFalse);
+    expect(prefs.marketingAvailable, isFalse);
+
+    // Nothing a customer needs in order to act on their own application is
+    // something they can switch off.
+    expect(prefs.mutableCategories, isNot(contains('application')));
+    expect(prefs.mutableCategories, isNot(contains('document')));
+  }, skip: skip);
+
+  // --- Decision history ---------------------------------------------------------
+
+  test('a simulation is recorded as something explored, not something done', () async {
+    final decisions = ApiDecisionService(api);
+
+    await api.post('/fynn-twin/simulate', body: {
+      'type': 'loan',
+      'product_id': 'prod_bl_b',
+      'amount': 1000000,
+      'tenure_months': 60,
+    });
+
+    /*
+     * Found by the product it was for, not by position.
+     *
+     * Another test in this file simulates a different product, so "the
+     * first simulation in the history" depends on which ran first — an
+     * ordering dependency that made this fail once the file grew.
+     */
+    final history = await decisions.getDecisions();
+    final simulation = history.firstWhere(
+      (d) => d.type == 'simulation' && d.product?.code == 'prod_bl_b',
+    );
+
+    // Labelled a simulation on the entry itself.
+    expect(simulation.isSimulated, isTrue);
+
+    // And nothing about it says the customer wanted or chose anything.
+    final whole = '${simulation.title} ${simulation.description}'.toLowerCase();
+    for (final inference in ['want', 'prefer', 'chose', 'intend']) {
+      expect(whole, isNot(contains(inference)), reason: 'inferred: $inference');
+    }
+  }, skip: skip);
+
+  test('the same exploration is recorded once', () async {
+    final decisions = ApiDecisionService(api);
+
+    Future<void> simulate() => api.post('/fynn-twin/simulate', body: {
+      'type': 'loan',
+      'product_id': 'prod_bl_a',
+      'amount': 777000,
+      'tenure_months': 36,
+    });
+
+    await simulate();
+    final after = (await decisions.getDecisions()).length;
+
+    await simulate();
+    await simulate();
+
+    // A slider that lands back on the same figures is the same exploration.
+    expect((await decisions.getDecisions()).length, after);
+  }, skip: skip);
+
+  test('an explanation attributes every figure it shows', () async {
+    final decisions = ApiDecisionService(api);
+
+    final history = await decisions.getDecisions();
+    expect(history, isNotEmpty);
+
+    final detail = await decisions.getDecision(history.first.id);
+
+    const sources = {
+      'customer_provided', 'calculated', 'catalogue_published',
+      'provider_derived', 'simulated', 'historical_snapshot',
+    };
+
+    for (final explanation in detail.explanation) {
+      expect(explanation.rule, isNotEmpty);
+
+      for (final factor in [...explanation.factors, ?explanation.result]) {
+        expect(sources, contains(factor.source));
+        expect(factor.value, isNotEmpty);
+      }
+    }
+  }, skip: skip);
+
+  test('no decision explanation makes a claim nothing supports', () async {
+    final decisions = ApiDecisionService(api);
+
+    var whole = '';
+    for (final entry in await decisions.getDecisions()) {
+      final detail = await decisions.getDecision(entry.id);
+      whole += [
+        detail.title,
+        detail.description,
+        ...detail.explanation.expand(
+          (e) => [e.title, e.rule, ...e.notAssessed],
+        ),
+      ].join(' ');
+    }
+    whole = whole.toLowerCase();
+
+    for (final claim in [
+      'guaranteed', 'you are approved', 'likely to be approved',
+      'approval probability', 'cheapest', 'is best', 'best option',
+      'we recommend', 'you should', 'affordable for you', 'eligible',
+    ]) {
+      expect(whole, isNot(contains(claim)), reason: 'claimed: $claim');
+    }
+  }, skip: skip);
+
+  test('a decision carries no internal identifiers', () async {
+    final raw = await api.get('/decisions') as List;
+
+    for (final entry in raw) {
+      final decision = entry as Map<String, dynamic>;
+
+      expect(decision.containsKey('user_id'), isFalse);
+      expect(decision.containsKey('idempotency_key'), isFalse);
+      expect(decision.containsKey('snapshot'), isFalse);
+    }
+  }, skip: skip);
+
+  test('another customer\'s decision is not found', () async {
+    await expectLater(
+      ApiDecisionService(api).getDecision('d999999'),
+      throwsA(isA<NotFoundException>()),
+    );
+  }, skip: skip);
+
+  test('decisions are unavailable without a token', () async {
+    await expectLater(
+      ApiDecisionService(ApiClient()).getDecisions(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+  }, skip: skip);
+
+  // --- Financial intelligence -------------------------------------------------
+
+  test('the intelligence layer answers with a coherent view', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    // One next action, or none — never several competing ones.
+    if (intelligence.nextAction != null) {
+      expect(intelligence.nextAction!.title, isNotEmpty);
+      expect(intelligence.nextAction!.reason, isNotEmpty);
+      expect(intelligence.nextAction!.actionRoute, startsWith('/'));
+    }
+
+    // Every insight names the authoritative part of FynnEdge it came from.
+    const sources = {
+      'financial_engine', 'fynnscore', 'goal', 'application', 'provider_event',
+    };
+
+    for (final insight in intelligence.insights) {
+      expect(sources, contains(insight.source));
+      expect(insight.title, isNotEmpty);
+      expect(insight.body, isNotEmpty);
+    }
+  }, skip: skip);
+
+  test('the position is the plan\'s factual half, and it is honest', () async {
+    final position = (await ApiIntelligenceService(api).getIntelligence())
+        .position;
+
+    // Every state has a sentence, including the state of not knowing.
+    expect(position.statement, isNotEmpty);
+    expect(position.emergencyReferenceMonths, 6);
+
+    if (position.isMeasurable) {
+      expect(position.surplusState, isNot(SurplusState.unknown));
+
+      // The figure and the sentence describe the same customer.
+      expect(
+        position.surplusState,
+        position.surplus < 0
+            ? SurplusState.negative
+            : position.surplus == 0
+            ? SurplusState.matched
+            : SurplusState.positive,
+      );
+
+      /*
+       * A buffer figure exists only when there is something to cover. With
+       * nothing recorded going out, the ratio's zero was being read as
+       * "less than a month" — telling a customer their savings were thin
+       * when FynnEdge had simply not been told what they spend.
+       */
+      if (position.emergencyMonths == null) {
+        expect(position.emergencyStatement, isNull);
+        expect(position.emergencyBelowReference, isFalse);
+      } else {
+        expect(position.emergencyStatement, isNotEmpty);
+        expect(
+          position.emergencyBelowReference,
+          position.emergencyMonths! < 6,
+        );
+      }
+    } else {
+      // Nothing entered, so nothing worked out — not even a zero.
+      expect(position.surplusState, SurplusState.unknown);
+      expect(position.emergencyMonths, isNull);
+      expect(position.emergencyStatement, isNull);
+    }
+
+    // The position describes; it never instructs or predicts.
+    final whole = [
+      position.statement,
+      position.emergencyStatement ?? '',
+    ].join(' ').toLowerCase();
+
+    for (final claim in [
+      'on track', 'you should', 'you must', 'you will', 'take a loan',
+      'borrow', 'immediately',
+    ]) {
+      expect(whole, isNot(contains(claim)), reason: 'the position said: $claim');
+    }
+  }, skip: skip);
+
+  test('one read carries the score and the goals the review shows', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    /*
+     * The review is this read and nothing else, so the score and the goals
+     * have to be in it. Fetching them separately would describe the same
+     * customer at three instants and let three sections of one screen
+     * disagree.
+     */
+    final score = await ApiProfileService(api).getFynnScore();
+
+    expect(intelligence.score.hasScore, score.hasScore);
+    expect(intelligence.score.score, score.score);
+    expect(intelligence.score.bandLabel, score.band?.label);
+
+    final goals = await ApiProfileService(api).getGoals();
+
+    expect(intelligence.goalCount, goals.length);
+    expect(intelligence.goals.length, lessThanOrEqualTo(10));
+
+    for (var i = 0; i < intelligence.goals.length; i++) {
+      // The same figures, from the same engine, not recomputed anywhere.
+      expect(intelligence.goals[i].id, goals[i].id);
+      expect(intelligence.goals[i].progress, goals[i].progress);
+      expect(intelligence.goals[i].monthlyRequired, goals[i].monthlyRequired);
+      expect(intelligence.goals[i].isComplete, goals[i].isComplete);
+    }
+  }, skip: skip);
+
+  test('the plan is short, ordered, and led by the next action', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    // A plan, not a backlog.
+    expect(intelligence.plan.length, lessThanOrEqualTo(3));
+
+    // One ladder produces both, so the card and the list agree.
+    if (intelligence.nextAction != null) {
+      expect(intelligence.plan, isNotEmpty);
+      expect(intelligence.plan.first.type, intelligence.nextAction!.type);
+    }
+
+    // Ordered by what it costs to ignore, and it says so.
+    final priorities = intelligence.plan.map((a) => a.priority).toList();
+    final sorted = [...priorities]..sort();
+    expect(priorities, sorted);
+
+    // Every item is something the customer can actually do here.
+    for (final action in intelligence.plan) {
+      expect(action.reason, isNotEmpty);
+      expect(action.actionRoute, startsWith('/'));
+      expect(action.title, isNotEmpty);
+    }
+  }, skip: skip);
+
+  test('the plan never pressures or sells', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    final whole = intelligence.plan
+        .expand((a) => [a.title, a.reason])
+        .join(' ')
+        .toLowerCase();
+
+    /*
+     * The planner is an action planner, not a salesperson. Nothing in a
+     * plan may push a product, promise an outcome or manufacture urgency.
+     */
+    for (final claim in [
+      'you should', 'you must', 'apply now', 'act now', 'guaranteed',
+      'approved', 'best rate', 'cheapest', 'limited time', 'don\'t miss',
+      'will save you', 'invest',
+    ]) {
+      expect(whole, isNot(contains(claim)), reason: 'pressured: $claim');
+    }
+  }, skip: skip);
+
+  test('no unsupported claim is ever made about the customer', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+    final timeline = await ApiIntelligenceService(api).getTimeline();
+
+    final whole = [
+      intelligence.nextAction?.title,
+      intelligence.nextAction?.reason,
+      ...intelligence.insights.expand((i) => [i.title, i.body]),
+      ...timeline.expand((m) => [m.title, m.description]),
+    ].whereType<String>().join(' ').toLowerCase();
+
+    /*
+     * The claims Module 31 exists to prevent. Some are predictions nothing
+     * computes; the rest are trends that would need a history FynnEdge did
+     * not keep until this module began observing.
+     */
+    for (final claim in [
+      'likely to be approved',
+      'you will be approved',
+      'guaranteed',
+      'your income will',
+      'you will save',
+      'cheapest',
+      'best loan',
+      'financially ready',
+      'your expenses are falling',
+      'your income increased',
+    ]) {
+      expect(whole, isNot(contains(claim)), reason: 'claimed: $claim');
+    }
+  }, skip: skip);
+
+  test('observed progress names two figures FynnEdge actually stored', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    // Nothing to compare means nothing shown, and the count says which.
+    if (!intelligence.hasComparableHistory) {
+      expect(intelligence.progress, isEmpty);
+    }
+
+    for (final change in intelligence.progress) {
+      expect(change.label, isNotEmpty);
+      expect(change.previousDisplay, isNotEmpty);
+      expect(change.currentDisplay, isNotEmpty);
+      expect(change.previousDisplay, isNot(change.currentDisplay));
+
+      // A description of two numbers, never a judgement about which way is
+      // better.
+      expect(change.direction, anyOf('increased', 'decreased'));
+
+      // Where the figure came from. Never simulated, never a provider's.
+      expect(change.source, anyOf('customer_provided', 'calculated'));
+
+      expect(change.summary, contains('changed from'));
+      expect(change.spokenSummary, contains(change.direction));
+
+      // Component figures belong to a score change and to nothing else.
+      if (!change.isScore) expect(change.components, isEmpty);
+
+      final whole = '${change.summary} ${change.spokenSummary}'.toLowerCase();
+      for (final claim in [
+        'because', 'thanks to', 'on track', 'improving', 'recovered',
+        'healthier', 'will ', 'expected', 'predicted',
+      ]) {
+        expect(whole, isNot(contains(claim)), reason: 'history claimed: $claim');
+      }
+    }
+  }, skip: skip);
+
+  test('history is reported honestly rather than implied', () async {
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    // The count and the flag agree: one observation is not a history,
+    // because the single stored reading is the current state.
+    expect(intelligence.observations, isNonNegative);
+
+    if (intelligence.observations < 2) {
+      expect(intelligence.hasComparableHistory, isFalse);
+    }
+  }, skip: skip);
+
+  test('the timeline carries no internal reasoning', () async {
+    final raw = await api.get('/intelligence/timeline') as List;
+
+    for (final entry in raw) {
+      final moment = entry as Map<String, dynamic>;
+
+      // Why FynnEdge recorded it describes the system, not the customer.
+      expect(moment.containsKey('rule'), isFalse);
+      expect(moment.containsKey('evidence'), isFalse);
+      expect(moment.containsKey('idempotency_key'), isFalse);
+      expect(moment.containsKey('user_id'), isFalse);
+    }
+  }, skip: skip);
+
+  test('home and the intelligence layer agree on the next step', () async {
+    // Home consumes the same rules rather than running its own, so the two
+    // cannot suggest different things to the same customer.
+    final home = await api.get('/home') as Map<String, dynamic>;
+    final intelligence = await ApiIntelligenceService(api).getIntelligence();
+
+    final homeKey = (home['primary_action'] as Map<String, dynamic>)['key'];
+    final next = intelligence.nextAction?.type;
+
+    const equivalent = {
+      'complete_profile': 'complete_profile',
+      'add_your_name': 'add_your_name',
+      'set_goal': 'create_goal',
+      'view_applications': 'review_application',
+      'explore_options': 'explore_options',
+      'resolve_submission_status': 'resolve_submission_status',
+      'review_goal': 'review_goal',
+      'review_score': 'review_score',
+
+      // Module 33's rungs. Home carries its own vocabulary for the older
+      // ones and the action type's own for these.
+      'review_profile': 'review_profile',
+      'review_buffer': 'review_buffer',
+      'improve_score': 'improve_score',
+      'review_decision': 'review_decision',
+      'run_simulation': 'run_simulation',
+    };
+
+    // A key Home can emit that this map has not been told about is a
+    // disagreement waiting to be mistaken for one between the two engines.
+    expect(
+      equivalent.containsKey(homeKey),
+      isTrue,
+      reason: 'Home returned [$homeKey], which this test does not know about',
+    );
+
+    expect(equivalent[homeKey], next);
+  }, skip: skip);
+
+  test('intelligence is unavailable without a token', () async {
+    final anonymous = ApiIntelligenceService(ApiClient());
+
+    await expectLater(
+      anonymous.getIntelligence(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+    await expectLater(
+      anonymous.getTimeline(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+  }, skip: skip);
+
+  // --- Support --------------------------------------------------------------
+
+  test('the support categories are the ones that can be chosen', () async {
+    final support = ApiSupportService(api);
+    final categories = await support.getCategories();
+
+    expect(categories, isNotEmpty);
+
+    for (final category in categories) {
+      // Labels a customer reads, never an enum name.
+      expect(category.label, isNotEmpty);
+      expect(category.label, isNot(category.id));
+      expect(category.description, isNotEmpty);
+    }
+  }, skip: skip);
+
+  test('a support request round-trips and gets a reference', () async {
+    final support = ApiSupportService(api);
+
+    final created = await support.createCase(
+      SupportRequestDraft(
+        category: 'general',
+        subject: 'A question about my account',
+        description: 'I would like to understand how this works.',
+        idempotencyKey: 'contract-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+    );
+
+    expect(created.reference, matches(RegExp(r'^FE-SUP-\d{4}-\d{6}$')));
+    expect(created.status, SupportCaseStatus.open);
+
+    // FynnEdge decides both of these; nothing was sent for either.
+    expect(created.priority, 'normal');
+    expect(created.isOpen, isTrue);
+
+    final read = await support.getCase(created.id);
+    expect(read.reference, created.reference);
+    expect(read.timeline, isNotEmpty);
+  }, skip: skip);
+
+  test('the same request twice is one request', () async {
+    final support = ApiSupportService(api);
+    final key = 'contract-idem-${DateTime.now().microsecondsSinceEpoch}';
+
+    SupportRequestDraft draft() => SupportRequestDraft(
+      category: 'general',
+      subject: 'A question I am about to ask twice',
+      description: 'I would like to understand how this works.',
+      idempotencyKey: key,
+    );
+
+    final first = await support.createCase(draft());
+    final second = await support.createCase(draft());
+
+    expect(second.reference, first.reference);
+  }, skip: skip);
+
+  test('information can be added and the request then closed', () async {
+    final support = ApiSupportService(api);
+
+    final created = await support.createCase(
+      SupportRequestDraft(
+        category: 'technical',
+        subject: 'Something is not working for me',
+        description: 'The screen does not load when I open it.',
+        idempotencyKey: 'contract-msg-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+    );
+
+    final withMessage = await support.addMessage(
+      created.id,
+      'It happens every time I open the app.',
+    );
+
+    expect(withMessage.messages, hasLength(1));
+    expect(withMessage.messages.single.fromCustomer, isTrue);
+
+    final closed = await support.closeCase(created.id);
+
+    expect(closed.status, SupportCaseStatus.closed);
+    expect(closed.isOpen, isFalse);
+    expect(closed.acceptsMessages, isFalse);
+
+    // And nothing further can be added to it.
+    await expectLater(
+      support.addMessage(created.id, 'One more thing'),
+      throwsA(isA<ApiException>()),
+    );
+  }, skip: skip);
+
+  test('a support response carries no internal identifiers', () async {
+    final support = ApiSupportService(api);
+    final cases = await support.getCases();
+
+    for (final item in cases) {
+      expect(item.reference, startsWith('FE-SUP-'));
+
+      // The context, when there is one, names what it is about and nothing
+      // out of the record.
+      final context = item.context;
+      if (context != null) {
+        expect(context.type, isNotEmpty);
+        expect(context.label, isNotEmpty);
+      }
+    }
+  }, skip: skip);
+
+  test('another customer\'s request is a plain 404', () async {
+    // Nothing this customer owns has an id near the top of the range, and
+    // "not yours" must answer the same as "no such thing".
+    await expectLater(
+      ApiSupportService(api).getCase('999999'),
+      throwsA(isA<NotFoundException>()),
+    );
+  }, skip: skip);
+
+  test('support is unavailable without a token', () async {
+    final anonymous = ApiSupportService(ApiClient());
+
+    await expectLater(
+      anonymous.getCategories(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+    await expectLater(
+      anonymous.getCases(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+  }, skip: skip);
+
+  test('notifications are unavailable without a token', () async {
+    await expectLater(
+      ApiNotificationService(ApiClient()).getNotifications(),
+      throwsA(isA<UnauthorizedException>()),
+    );
+    await expectLater(
+      ApiNotificationService(ApiClient()).getUnreadCount(),
       throwsA(isA<UnauthorizedException>()),
     );
   }, skip: skip);

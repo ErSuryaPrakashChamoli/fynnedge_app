@@ -3,9 +3,15 @@ import 'dart:typed_data';
 import '../models/chat.dart';
 import '../models/document.dart';
 import '../models/notification.dart';
+import '../models/decision.dart';
+import '../models/intelligence.dart';
+import '../models/support.dart';
 import '../services/ai_service.dart';
 import '../services/document_service.dart';
 import '../services/notification_service.dart';
+import '../services/decision_service.dart';
+import '../services/intelligence_service.dart';
+import '../services/support_service.dart';
 
 class DocumentRepository {
   DocumentRepository(this._service);
@@ -52,6 +58,43 @@ class AiRepository {
     required String conversationId,
     required String text,
   }) => _service.send(conversationId: conversationId, text: text);
+}
+
+/// What the customer explored, and why FynnEdge showed what it did.
+class DecisionRepository {
+  DecisionRepository(this._service);
+  final DecisionService _service;
+
+  Future<List<Decision>> list() => _service.getDecisions();
+  Future<Decision> read(String id) => _service.getDecision(id);
+}
+
+/// What FynnEdge understands about the customer's money.
+class IntelligenceRepository {
+  IntelligenceRepository(this._service);
+  final IntelligenceService _service;
+
+  Future<FinancialIntelligence> read() => _service.getIntelligence();
+  Future<List<FinancialMoment>> timeline() => _service.getTimeline();
+}
+
+/// Asking FynnEdge for help.
+///
+/// Mock and API implementations sit behind one interface, so the screen has
+/// no way to tell which it is talking to — the seam every other capability
+/// in FynnEdge uses.
+class SupportRepository {
+  SupportRepository(this._service);
+  final SupportService _service;
+
+  Future<List<SupportCategoryOption>> categories() => _service.getCategories();
+  Future<List<SupportCase>> cases() => _service.getCases();
+  Future<SupportCase> read(String id) => _service.getCase(id);
+  Future<SupportCase> create(SupportRequestDraft draft) =>
+      _service.createCase(draft);
+  Future<SupportCase> addMessage(String id, String body) =>
+      _service.addMessage(id, body);
+  Future<SupportCase> close(String id) => _service.closeCase(id);
 }
 
 class NotificationRepository {

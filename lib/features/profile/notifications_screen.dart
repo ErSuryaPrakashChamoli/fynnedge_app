@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
+import '../../core/utils/clock.dart';
 import '../../core/utils/error_text.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/entrance.dart';
@@ -95,7 +96,10 @@ class _NotificationList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    // AppClock, not DateTime.now(): anything the customer sees that depends
+    // on the current time reads from the one source, so a golden does not
+    // drift with the wall clock.
+    final now = AppClock.now();
 
     // Built in order, so a group heading appears exactly where the group
     // starts and never for a group with nothing in it.

@@ -3,10 +3,18 @@ import '../models/home_snapshot.dart';
 
 /// The one next step most worth taking, from what the customer has.
 ///
-/// Mirrors HomeSnapshotService::primaryAction. Deterministic and ordered:
-/// finish the profile, tell us your name, then set a goal, then follow an
-/// application, and otherwise explore. No "recent activity" is invented to justify a
-/// suggestion, and nothing here is presented as advice.
+/// Mirrors the server's NextActionRules, which HomeSnapshotService now
+/// consumes. Deterministic and ordered: resolve a submission nobody could
+/// confirm, then finish the profile, then tell us your name, then set a
+/// goal, then follow an application, and otherwise explore.
+///
+/// The first rung exists because of a failure it prevents. Home used to put
+/// "set your first goal" above an application FynnEdge had sent and never
+/// heard back about, so a customer told not to resubmit was simultaneously
+/// invited to go and do something else.
+///
+/// No "recent activity" is invented to justify a suggestion, and nothing
+/// here is presented as advice.
 class PrimaryActionRules {
   const PrimaryActionRules();
 
@@ -15,7 +23,23 @@ class PrimaryActionRules {
     required bool hasName,
     required int goalCount,
     required int applicationCount,
+
+    /// Whether an application was sent and never confirmed.
+    ///
+    /// The rung above everything else. A customer in this state has been
+    /// told not to submit again, and suggesting anything else while that
+    /// is true would be the product contradicting itself about the most
+    /// consequential thing it has said to them.
+    bool blockedBySubmission = false,
   }) {
+    if (blockedBySubmission) {
+      return const PrimaryAction(
+        key: 'resolve_submission_status',
+        label: 'Check your application',
+        route: Routes.applications,
+      );
+    }
+
     if (!hasIncome) {
       return const PrimaryAction(
         key: 'complete_profile',

@@ -79,6 +79,75 @@ the standard reducing-balance formula, verified against known values.
 
 ---
 
+## The financial review
+
+Reached from Profile, because the customer asks for it. It gathers and
+computes nothing: the position, the score, the goals, the observed changes
+and the next step all come from **one** `/intelligence` read, so no two
+sections can describe the customer at two different instants. Recorded
+decisions come from their own request — an immutable fact with its own
+timestamp cannot contradict a figure.
+
+Sections with nothing to say are absent rather than filled. A customer who
+has entered nothing sees what cannot be worked out and one step that leads
+somewhere — no ₹0 surplus, no zero-month buffer, no invented goal.
+
+There is no review score, no grade and no schedule. Nothing records that a
+review happened, so there is no honest "last reviewed" date and the screen
+does not invent one.
+
+---
+
+## Progress and the story
+
+The story screen has two halves and the difference matters. **Progress** is
+what FynnEdge observed *changing* — a figure it wrote down twice with
+different values. The **story** beneath it is what *happened*: goals set,
+applications started, a score becoming available.
+
+The screen derives none of it. Both sentences and both figures come from the
+server, so a history cannot print a number differently from the screen it
+came off. There is no chart, deliberately: a line needs points between the
+ones that exist, and inventing them turns a record of what happened into a
+picture of what might have.
+
+The empty state says which kind of empty it is. "Nothing to compare yet" and
+"no changes recorded" are different facts, and a customer who has just
+arrived deserves the first rather than being told their money has not moved.
+
+Nothing is coloured by direction — recorded outgo going up is not bad news
+and going down is not good news — and each row announces itself as a
+sentence with the direction in words, because an arrow is legible on a
+screen and silent when read aloud.
+
+---
+
+## The financial plan
+
+The Goals screen is the plan. It renders three answers to one read of one
+customer: the position the server worked out, the goals the customer
+created, and the next step from the same action ladder Home reads. It
+computes none of them — which is why the card on Home and the plan here
+cannot suggest different things.
+
+Two rules are worth knowing before editing it.
+
+**The borrowing shortcut is withheld from a customer whose recorded outgo
+exceeds their recorded income**, and also while the position has not loaded,
+because FynnEdge does not then know the surplus is safe. `plan_test.dart`
+checks both the absence and — on the same card, with a surplus — its
+presence, because a test that only ever asserts an absence passes just as
+well when the thing it guards was never reachable.
+
+**Nothing on the screen predicts.** The monthly figure is what the
+arithmetic gives at the target and date the customer chose, and it changes
+the moment they change either. It used to read "Set aside ₹9,474 a month for
+19 months to get there", and Home used to print "/mo to stay on track" —
+both claims about a future FynnEdge cannot see. `product_language_test.dart`
+now scans for the phrasings on both sides of the product.
+
+---
+
 ## Tests
 
 ```bash
@@ -96,6 +165,9 @@ flutter test --update-goldens    # refresh the screenshots in test/goldens
 | `navigation_flow_test.dart` | Drives the real router through the full 25-screen journey, signup included. |
 | `routes_test.dart` | Every constant in `Routes` resolves to a real screen, so a renamed path cannot leave a dead link. |
 | `api_contract_test.dart` | Parses live Laravel responses through the real models, error paths included. |
+| `review_test.dart` | The financial review: which sections a customer earns, and what it must never say however complete the rest looks. |
+| `progress_test.dart` | What the story screen may show about change, and what it must never say. Both halves of every guard: the state that suppresses something and the state that shows it. |
+| `plan_test.dart` | The financial plan: what it may show in each customer state, and what it must never say. Every guard is checked twice — once for the state that suppresses something, once for the state that shows it. |
 
 The API suite needs the backend:
 

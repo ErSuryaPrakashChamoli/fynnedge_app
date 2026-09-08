@@ -139,6 +139,105 @@ void main() {
       }
     });
 
+    test('nothing predicts what a customer\'s money will do', () {
+      /*
+       * Module 34's rule, and the one a planning feature breaks first.
+       *
+       * A plan describes what the figures currently show. "On track" reads
+       * as encouragement and is in fact a claim about the next eighteen
+       * months that nothing in FynnEdge can support — the goal card carried
+       * it, alongside "Set aside ₹9,474 a month for 19 months to get
+       * there", which is an instruction the customer never agreed to
+       * followed by a promise about where it leads.
+       *
+       * Scanned on both sides, because the sentence a customer reads is as
+       * often written in PHP as in Dart.
+       */
+      final predictions = [
+        RegExp('on track', caseSensitive: false),
+        RegExp('off track', caseSensitive: false),
+        RegExp('to get there', caseSensitive: false),
+        RegExp("you'?ll reach", caseSensitive: false),
+        RegExp('you will reach', caseSensitive: false),
+        RegExp('financially secure', caseSensitive: false),
+        RegExp('success probability', caseSensitive: false),
+        RegExp('goal success', caseSensitive: false),
+        RegExp('you should save', caseSensitive: false),
+        RegExp('your commitment', caseSensitive: false),
+        RegExp('you committed', caseSensitive: false),
+      ];
+
+      for (final entry in {...source, ...apiSource}.entries) {
+        for (final prediction in predictions) {
+          for (final match in prediction.allMatches(entry.value)) {
+            // Saying what FynnEdge does *not* claim is the sentence doing
+            // the work, and a file that documents its own refusal should
+            // not trip the guard enforcing it. Any other mention is a
+            // prediction being made.
+            final lead = entry.value.substring(
+              (match.start - 60).clamp(0, entry.value.length),
+              match.start,
+            );
+            final refuses = ['no "', "no '", 'not a', 'never', 'nothing '];
+            expect(
+              refuses.any(lead.contains),
+              isTrue,
+              reason:
+                  '${entry.key} predicts the future: '
+                  '"${entry.value.substring(match.start, match.end)}"',
+            );
+          }
+        }
+      }
+    });
+
+    test('nothing grades the customer or schedules them', () {
+      /*
+       * Module 36's two temptations, both of which make a review feel more
+       * finished than it is.
+       *
+       * The first is a verdict — a grade, a certificate, a completeness
+       * percentage — on top of a score that already has bands. The second
+       * is a schedule: FynnEdge records no review, so it has no honest way
+       * to say when the last one was or when the next is due, and a
+       * product that invented one would be teaching a habit rather than
+       * answering a question.
+       */
+      final inventions = [
+        RegExp('health grade', caseSensitive: false),
+        RegExp('health certificate', caseSensitive: false),
+        RegExp('review score', caseSensitive: false),
+        RegExp('completeness score', caseSensitive: false),
+        RegExp('overall grade', caseSensitive: false),
+        RegExp('review due', caseSensitive: false),
+        RegExp('next review', caseSensitive: false),
+        RegExp('last reviewed', caseSensitive: false),
+        RegExp('review reminder', caseSensitive: false),
+        RegExp('check (daily|every day|weekly|every week)', caseSensitive: false),
+      ];
+
+      for (final entry in {...source, ...apiSource}.entries) {
+        for (final invention in inventions) {
+          for (final match in invention.allMatches(entry.value)) {
+            // A file documenting its own refusal should not trip the guard
+            // enforcing it. Any other mention is the thing being built.
+            final lead = entry.value.substring(
+              (match.start - 60).clamp(0, entry.value.length),
+              match.start,
+            );
+            final refuses = ['no "', "no '", 'not a', 'never', 'nothing ', 'no '];
+            expect(
+              refuses.any(lead.contains),
+              isTrue,
+              reason:
+                  '${entry.key} grades or schedules the customer: '
+                  '"${entry.value.substring(match.start, match.end)}"',
+            );
+          }
+        }
+      }
+    });
+
     test('FynnScore is the only score, and is never called another one', () {
       // Guards the whole vocabulary at once: a "financial health score" or a
       // "risk score" appearing anywhere means a second score was introduced.
@@ -168,6 +267,61 @@ void main() {
           }
         }
       }
+    });
+  });
+
+  group('the product does not decide for itself what is real', () {
+    test('the sample notice is never gated on the build flag', () {
+      /*
+       * Whether data is sample is a fact the server holds: its catalogue
+       * driver is either the sample one or a real one, and it says so on
+       * every product as `is_sample_data`.
+       *
+       * SampleDataNotice used to also require ApiConfig.useMock, which
+       * silently defeated the four callers that had correctly asked the
+       * server. A release build against a real API still serving the sample
+       * catalogue — the configuration this launches in — would have shown
+       * six fictional lenders with no notice at all.
+       */
+      // Comment lines stripped: the file documents the refusal, and a
+      // file that explains what it will not do should not trip the guard
+      // enforcing it.
+      final notice = source['lib/core/widgets/sample_data_notice.dart']!
+          .split('\n')
+          .where((line) => !line.trimLeft().startsWith('//'))
+          .join('\n');
+
+      expect(
+        notice,
+        isNot(contains('ApiConfig')),
+        reason:
+            'the sample notice decides its own visibility from the build '
+            'flag again; the server is what knows whether the catalogue is '
+            'sample',
+      );
+    });
+
+    test('every catalogue surface asks the server before staying silent', () {
+      // Each of these renders lender pricing. If one shows a product
+      // without consulting the provenance the API sent, a fictional lender
+      // reaches a customer unlabelled.
+      const surfaces = {
+        'lib/features/loans/loan_options_screen.dart': 'isSampleCatalogue',
+        'lib/features/loans/loan_detail_screen.dart': 'isSampleData',
+        'lib/features/applications/application_review_screen.dart':
+            'isSampleData',
+        'lib/features/applications/application_detail_screen.dart':
+            'isSimulated',
+      };
+
+      surfaces.forEach((path, provenance) {
+        expect(
+          source[path],
+          contains(provenance),
+          reason: '$path shows lender data without asking the server whether '
+              'it is real',
+        );
+      });
     });
   });
 

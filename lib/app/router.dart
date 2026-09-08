@@ -28,7 +28,13 @@ import '../features/profile/notifications_screen.dart';
 import '../features/credit/credit_screen.dart';
 import '../features/profile/privacy_screen.dart';
 import '../features/profile/profile_screen.dart';
-import '../features/profile/support_screen.dart';
+import '../features/decisions/decision_detail_screen.dart';
+import '../features/decisions/decision_history_screen.dart';
+import '../features/review/review_screen.dart';
+import '../features/intelligence/financial_timeline_screen.dart';
+import '../features/support/support_case_screen.dart';
+import '../features/support/support_request_screen.dart';
+import '../features/support/support_screen.dart';
 import '../features/score/fynn_score_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/splash/splash_screen.dart';
@@ -317,10 +323,67 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/decisions',
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (context, state) =>
+            fadeThrough(child: const DecisionHistoryScreen(), state: state),
+      ),
+      GoRoute(
+        path: '/review',
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (context, state) =>
+            fadeThrough(child: const ReviewScreen(), state: state),
+      ),
+      GoRoute(
+        path: '/decisions/:id',
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (context, state) => fadeThrough(
+          child: DecisionDetailScreen(decisionId: state.pathParameters['id']!),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/financial-story',
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (context, state) =>
+            fadeThrough(child: const FinancialTimelineScreen(), state: state),
+      ),
+      GoRoute(
         path: '/support',
         parentNavigatorKey: _rootKey,
         pageBuilder: (context, state) =>
             fadeThrough(child: const SupportScreen(), state: state),
+      ),
+
+      /*
+       * Asking for help, and following what happened.
+       *
+       * `/support/new` before `/support/cases/:id` is not an accident of
+       * ordering — they cannot collide, because 'new' is not under
+       * 'cases'. The context arrives as query parameters so support opened
+       * from an application already knows which one; the server checks
+       * both belong to the customer before attaching anything.
+       */
+      GoRoute(
+        path: '/support/new',
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (context, state) => fadeThrough(
+          child: SupportRequestScreen(
+            category: state.uri.queryParameters['category'],
+            contextType: state.uri.queryParameters['context_type'],
+            contextId: state.uri.queryParameters['context_id'],
+            suggestedSubject: state.uri.queryParameters['subject'],
+          ),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/support/cases/:id',
+        parentNavigatorKey: _rootKey,
+        pageBuilder: (context, state) => fadeThrough(
+          child: SupportCaseScreen(caseId: state.pathParameters['id']!),
+          state: state,
+        ),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

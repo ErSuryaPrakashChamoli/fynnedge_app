@@ -178,7 +178,16 @@ final unreadCountProvider = FutureProvider<int>((ref) async {
   }
 });
 
-/// What the customer has chosen about being notified.
-final notificationPreferencesProvider = FutureProvider<NotificationPreferences>(
-  (ref) => ref.watch(notificationRepositoryProvider).preferences(),
-);
+/*
+ * There is deliberately no preferences provider or settings screen yet.
+ *
+ * The API has preferences and they work: push can be switched off, and the
+ * two optional categories can be muted. But a preference here only ever
+ * affects push delivery, and NO PUSH PROVIDER IS CONNECTED — so a switch
+ * in front of a customer today would change nothing they could observe.
+ * FynnEdge does not show controls for things that cannot happen.
+ *
+ * NotificationRepository.preferences() and updatePreferences() exist and
+ * are exercised by the live API contract test, so the screen is a screen
+ * away when a provider is connected.
+ */

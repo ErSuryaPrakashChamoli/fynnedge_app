@@ -7,6 +7,7 @@ import '../../data/models/application.dart';
 import '../../data/models/match.dart';
 import '../../data/services/application_service.dart';
 import '../home/home_controller.dart';
+import '../intelligence/intelligence_controller.dart';
 
 final applicationsProvider = FutureProvider<List<LoanApplication>>((ref) async {
   return ref.watch(applicationServiceProvider).getApplications();
@@ -119,6 +120,12 @@ class ApplicationFlowController extends Notifier<ApplicationFlowState> {
       // flight until something else happened to refresh it.
       ref.invalidate(applicationsProvider);
       ref.invalidate(homeSnapshotProvider);
+
+      // The plan and Home's next steps are derived from this customer's
+      // current state, so a change to that state makes the previous answer
+      // wrong rather than merely old. Nothing invalidated it, and both
+      // screens went on suggesting a step the customer had just taken.
+      ref.invalidate(intelligenceProvider);
 
       return application;
     } on Object catch (e) {

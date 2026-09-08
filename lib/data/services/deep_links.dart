@@ -47,6 +47,7 @@ class DeepLinks {
       ['fynn-score'] => Routes.fynnScore,
       ['goals'] => Routes.goals,
       ['support'] => Routes.support,
+      ['support', 'cases', final id] when isId(id) => Routes.supportCase(id),
       _ => null,
     };
   }

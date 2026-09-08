@@ -448,4 +448,57 @@ void main() {
       await golden(tester, TwinScreen, '30a_fynn_twin_result');
     });
   });
+
+  /*
+   * What reaches the server, and therefore what gets recorded.
+   *
+   * Module 32 records a decision every time a simulation runs. That is only
+   * a reasonable thing to record because a simulation runs when the customer
+   * asks for one — the sliders change local state and nothing else.
+   *
+   * If that ever changed, so that adjusting a slider re-ran the simulation
+   * live, decision history would quietly become a record of every figure
+   * somebody tried on their way to the one they meant. These tests are what
+   * would notice.
+   */
+  group('what a slider costs', () {
+    test('adjusting the figures asks the server nothing', () async {
+      final service = FlakyTwinService();
+      final container = await containerWith(service);
+      final controller = container.read(twinControllerProvider.notifier);
+
+      controller.setType(ScenarioType.loan);
+      controller.setProduct('prod_bl_b');
+
+      // A drag across the amount slider, then the tenure one.
+      for (var amount = 500000.0; amount <= 2000000; amount += 50000) {
+        controller.setAmount(amount);
+      }
+      for (var months = 12; months <= 60; months += 6) {
+        controller.setTenure(months);
+      }
+
+      expect(
+        service.simulations,
+        0,
+        reason: 'a slider reached the server, so every figure tried on the '
+            'way to the intended one would be recorded as an exploration',
+      );
+    });
+
+    test('one deliberate tap is one simulation', () async {
+      final service = FlakyTwinService();
+      final container = await containerWith(service);
+      final controller = container.read(twinControllerProvider.notifier);
+
+      controller.setType(ScenarioType.loan);
+      controller.setProduct('prod_bl_b');
+      controller.setAmount(1000000);
+      controller.setTenure(60);
+
+      await controller.run();
+
+      expect(service.simulations, 1);
+    });
+  });
 }

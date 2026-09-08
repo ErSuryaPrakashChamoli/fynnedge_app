@@ -13,11 +13,25 @@ class GoalDerived {
     required this.progress,
     required this.monthsRemaining,
     required this.monthlyRequired,
+    required this.remainingAmount,
+    required this.isComplete,
+    required this.isOverdue,
   });
 
   final double progress;
   final int monthsRemaining;
   final double monthlyRequired;
+  final double remainingAmount;
+
+  /// saved >= target, as the server decided it.
+  ///
+  /// There is no completed goal *status* — FinancialGoal.status stays
+  /// 'active' and completion is derived from the two amounts. Reading the
+  /// server's answer rather than recomputing it is what keeps a card that
+  /// says "Goal reached" agreeing with the figures printed above it.
+  final bool isComplete;
+
+  final bool isOverdue;
 
   static GoalDerived? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -27,6 +41,9 @@ class GoalDerived {
       progress: J.dbl(json['progress']),
       monthsRemaining: J.integer(json['months_remaining']),
       monthlyRequired: J.dbl(json['monthly_required']),
+      remainingAmount: J.dbl(json['remaining_amount']),
+      isComplete: J.boolean(json['is_complete']),
+      isOverdue: J.boolean(json['is_overdue']),
     );
   }
 }
@@ -85,11 +102,12 @@ class Goal {
       derived?.monthlyRequired ?? _estimate.monthlyRequired.rupees;
 
   /// max(0, target - saved)
-  double get remainingAmount => _estimate.remaining.rupees;
+  double get remainingAmount =>
+      derived?.remainingAmount ?? _estimate.remaining.rupees;
 
-  bool get isComplete => _estimate.isComplete;
+  bool get isComplete => derived?.isComplete ?? _estimate.isComplete;
 
-  bool get isOverdue => _estimate.isOverdue;
+  bool get isOverdue => derived?.isOverdue ?? _estimate.isOverdue;
 
   Goal copyWith({
     String? title,
@@ -121,6 +139,31 @@ class Goal {
     note: J.str(json['note']),
     status: J.str(json['status'], 'active'),
     derived: GoalDerived.fromJson(json['derived']),
+  );
+
+  /// The same goal as the intelligence read returns it.
+  ///
+  /// One read of one customer serves the whole review, so the goals arrive
+  /// flat beside the position and the score rather than nested under
+  /// `derived` the way /goals returns them. The same model either way: a
+  /// review that parsed goals into a shape of its own would be a second
+  /// definition of a goal, and the card on the review and the card on the
+  /// plan could then disagree about the same one.
+  factory Goal.fromIntelligenceJson(Map<String, dynamic> json) => Goal(
+    id: J.str(json['id']),
+    title: J.str(json['title']),
+    category: GoalCategory.fromId(J.strOrNull(json['category'])),
+    targetAmount: J.dbl(json['target_amount']),
+    targetDate: J.date(json['target_date']) ?? AppClock.now(),
+    savedAmount: J.dbl(json['saved_amount']),
+    derived: GoalDerived(
+      progress: J.dbl(json['progress']),
+      monthsRemaining: J.integer(json['months_remaining']),
+      monthlyRequired: J.dbl(json['monthly_required']),
+      remainingAmount: J.dbl(json['remaining_amount']),
+      isComplete: J.boolean(json['is_complete']),
+      isOverdue: J.boolean(json['is_overdue']),
+    ),
   );
 
   /// Everything the model owns. Derived values are excluded on purpose: they
@@ -156,6 +199,9 @@ class Goal {
         progress: e.progress,
         monthsRemaining: e.monthsRemaining,
         monthlyRequired: e.monthlyRequired.rupees,
+        remainingAmount: e.remaining.rupees,
+        isComplete: e.isComplete,
+        isOverdue: e.isOverdue,
       ),
     );
   }

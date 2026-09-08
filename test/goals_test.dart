@@ -207,6 +207,9 @@ void main() {
             progress: 0.99,
             monthsRemaining: 3,
             monthlyRequired: 12345,
+            remainingAmount: 4321,
+            isComplete: false,
+            isOverdue: false,
           ),
         ),
       ];
@@ -219,6 +222,11 @@ void main() {
       expect(goal.progress, 0.99);
       expect(goal.monthsRemaining, 3);
       expect(goal.monthlyRequired, 12345);
+      // Completion and what is left are the server's answers too. Deriving
+      // them locally from the same two amounts would usually agree and
+      // would be a second definition of a reached goal.
+      expect(goal.remainingAmount, 4321);
+      expect(goal.isComplete, isFalse);
     });
 
     test('a local edit drops the server figures and derives locally', () {

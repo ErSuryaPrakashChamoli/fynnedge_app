@@ -55,6 +55,14 @@ class ProfileScreen extends ConsumerWidget {
                 title: 'Your money',
                 items: const [
                   _Item('Personal Information', Icons.person_outline_rounded),
+                  // The customer asking to be shown where they stand.
+                  // Nothing schedules it and nothing records it, so it sits
+                  // among their own records rather than as a prompt.
+                  _Item(
+                    'Financial Review',
+                    Icons.fact_check_outlined,
+                    route: Routes.review,
+                  ),
                   _Item(
                     'Financial Profile',
                     Icons.pie_chart_outline_rounded,
@@ -70,6 +78,14 @@ class ProfileScreen extends ConsumerWidget {
                     'Documents',
                     Icons.folder_outlined,
                     route: Routes.vault,
+                  ),
+                  // What FynnEdge showed them, and why. Beside their own
+                  // records rather than under support: it is their history,
+                  // not a diagnostic.
+                  _Item(
+                    'What you explored',
+                    Icons.history_rounded,
+                    route: Routes.decisions,
                   ),
                 ],
                 onTapLabel: {

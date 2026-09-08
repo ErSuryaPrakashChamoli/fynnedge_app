@@ -28,6 +28,9 @@ import '../data/services/kyc_service.dart';
 import '../data/services/local_store.dart';
 import '../data/services/match_service.dart';
 import '../data/services/notification_service.dart';
+import '../data/services/decision_service.dart';
+import '../data/services/intelligence_service.dart';
+import '../data/services/support_service.dart';
 import '../data/services/profile_service.dart';
 import '../data/services/submission_service.dart';
 
@@ -168,6 +171,24 @@ final aiServiceProvider = Provider<AiService>(
       : ApiAiService(ref.watch(apiClientProvider)),
 );
 
+final decisionServiceProvider = Provider<DecisionService>(
+  (ref) => ApiConfig.useMock
+      ? const MockDecisionService()
+      : ApiDecisionService(ref.watch(apiClientProvider)),
+);
+
+final intelligenceServiceProvider = Provider<IntelligenceService>(
+  (ref) => ApiConfig.useMock
+      ? const MockIntelligenceService()
+      : ApiIntelligenceService(ref.watch(apiClientProvider)),
+);
+
+final supportServiceProvider = Provider<SupportService>(
+  (ref) => ApiConfig.useMock
+      ? MockSupportService()
+      : ApiSupportService(ref.watch(apiClientProvider)),
+);
+
 final notificationServiceProvider = Provider<NotificationService>(
   (ref) => ApiConfig.useMock
       ? MockNotificationService()
@@ -248,6 +269,18 @@ final documentRepositoryProvider = Provider<DocumentRepository>(
 
 final aiRepositoryProvider = Provider<AiRepository>(
   (ref) => AiRepository(ref.watch(aiServiceProvider)),
+);
+
+final decisionRepositoryProvider = Provider<DecisionRepository>(
+  (ref) => DecisionRepository(ref.watch(decisionServiceProvider)),
+);
+
+final intelligenceRepositoryProvider = Provider<IntelligenceRepository>(
+  (ref) => IntelligenceRepository(ref.watch(intelligenceServiceProvider)),
+);
+
+final supportRepositoryProvider = Provider<SupportRepository>(
+  (ref) => SupportRepository(ref.watch(supportServiceProvider)),
 );
 
 final notificationRepositoryProvider = Provider<NotificationRepository>(

@@ -6,6 +6,7 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/ambient_background.dart';
+import '../../core/widgets/get_help.dart';
 import '../../data/models/chat.dart';
 import '../profile/consent_controller.dart';
 import 'ai_controller.dart';
@@ -134,6 +135,24 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                     ),
                   ),
                 ),
+              /*
+               * The human handoff.
+               *
+               * Offered once the conversation has actually started, so it
+               * does not read as FynnAI apologising before it has answered
+               * anything. It promises a request and a reference — never
+               * that somebody is waiting, because nobody is.
+               */
+              if (chat.messages.length >= 2)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 4, 18, 10),
+                  child: GetHelpCard(
+                    prompt: 'Would you rather a person looked at this?',
+                    category: 'fynnai',
+                    contextType: 'fynnai',
+                  ),
+                ),
+
               if (chat.error != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 18),

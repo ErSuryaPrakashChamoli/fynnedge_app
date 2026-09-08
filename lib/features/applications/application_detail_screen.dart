@@ -193,10 +193,29 @@ class _Detail extends ConsumerWidget {
                         // Sized to what is left after the icon and padding
                         // rather than to its natural width, which overflows
                         // a 360-wide screen inside this nested column.
+                        /*
+                         * Straight to a request that already knows what it
+                         * is about.
+                         *
+                         * The customer is stuck on this application and has
+                         * been told not to retry, so making them find the
+                         * support screen, pick a category and type their
+                         * own reference would be the product asking them to
+                         * do its work. The server checks the application is
+                         * theirs, and raises the request as high priority
+                         * because of the state — not because this link said
+                         * so.
+                         */
                         SecondaryButton(
-                          label: 'Contact support',
+                          label: 'Get help',
                           expand: false,
-                          onPressed: () => context.push(Routes.support),
+                          onPressed: () => context.push(
+                            Routes.supportNew(
+                              category: 'submission_status',
+                              contextType: 'application',
+                              contextId: app.id,
+                            ),
+                          ),
                         ),
                       ],
                     ),

@@ -177,10 +177,14 @@ void screenTest(
   /// Runs before the screen is pumped, for screens whose content only exists
   /// once the customer has done something.
   Future<void> Function()? setUp,
+
+  /// Stands a service in, for screens whose interesting states depend on
+  /// what came back rather than on what the customer did.
+  List<Override> overrides = const [],
 }) {
   testWidgets(name.replaceAll('_', ' '), (tester) async {
     await setUp?.call();
-    await pumpScreen(tester, build());
+    await pumpScreen(tester, build(), overrides: overrides);
     await settle(tester);
     await golden(tester, type, name);
   });

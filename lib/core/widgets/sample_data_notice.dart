@@ -2,13 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
-import '../../data/services/api_config.dart';
 
 /// Says plainly that the offers on screen are illustrative.
 ///
-/// Renders only while the app is on mock data, so it disappears by itself the
-/// moment a real lender catalogue is connected. Nothing in FynnEdge should
-/// let a customer mistake a fictional lender for a live market offer.
+/// Whether to show it is the caller's decision, and the caller decides from
+/// what the *server* said: `product.isSampleData`, `result.isSampleCatalogue`
+/// and `application.isSimulated` all come off the API, which knows whether
+/// its catalogue driver is the sample one.
+///
+/// This used to gate itself on ApiConfig.useMock as well, and that quietly
+/// defeated all four of those conditions. A release build talking to a real
+/// API that is still serving the sample catalogue — the exact configuration
+/// this product launches in — would have shown six fictional lenders with no
+/// notice at all, because the client's own build flag said it was not on
+/// mock data. The server's answer is the one that matters, so the widget no
+/// longer has an opinion.
 class SampleDataNotice extends StatelessWidget {
   const SampleDataNotice({
     super.key,
@@ -33,8 +41,6 @@ class SampleDataNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!ApiConfig.useMock) return const SizedBox.shrink();
-
     return Container(
       margin: margin,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),

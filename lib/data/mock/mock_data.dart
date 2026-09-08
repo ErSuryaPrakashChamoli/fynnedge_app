@@ -256,7 +256,7 @@ class MockData {
       id: 'prod_bl_b',
       lender: 'United Credit Bank',
       name: 'SME Term Loan',
-      lenderTag: 'Lowest rate in this set',
+      lenderTag: 'Lowest business rate in this set',
       category: LoanCategory.business,
       minAmount: 1000000,
       maxAmount: 7500000,

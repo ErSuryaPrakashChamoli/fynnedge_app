@@ -16,6 +16,7 @@ import '../../core/widgets/surfaces.dart';
 import '../../data/models/goal.dart';
 import '../../data/models/home_snapshot.dart';
 import '../../data/models/score.dart';
+import '../intelligence/intelligence_controller.dart';
 import '../profile/notification_controller.dart';
 import 'home_controller.dart';
 import 'widgets/allocation_bar.dart';
@@ -158,6 +159,13 @@ class _HomeBody extends StatelessWidget {
 
         const SizedBox(height: 24),
         _PrimaryActionCard(action: snapshot.primaryAction),
+
+        // The rest of the plan, when there is more than the one card above.
+        const _NextSteps(),
+
+        // What has actually happened, if anything has. Absent entirely for
+        // a customer with no story rather than replaced by encouragement.
+        const _RecentMoments(),
 
         if (!snapshot.needsFinancialProfile) ...[
           const SizedBox(height: 24),
@@ -321,6 +329,180 @@ class _NotificationBell extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The rest of the plan, beneath the primary action.
+///
+/// Home already shows the first item as its primary action card, so this
+/// renders what follows it and nothing when there is nothing — a customer
+/// with one sensible next step sees one, not one plus two invented to fill
+/// the space.
+///
+/// Home computes none of this. The order, the reasons and the destinations
+/// all come from the server's single ladder, so the card above and the list
+/// below cannot suggest different things.
+class _NextSteps extends ConsumerWidget {
+  const _NextSteps();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final plan = ref.watch(intelligenceProvider).value?.plan ?? const [];
+
+    // The first is already the primary action card above.
+    final rest = plan.skip(1).toList();
+
+    if (rest.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const SectionHeader(
+          title: 'What else you could do',
+          subtitle: 'Each of these comes from something FynnEdge knows.',
+        ),
+        for (final action in rest)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Semantics(
+              button: true,
+              label: '${action.title}. ${action.reason}',
+              child: GestureDetector(
+                onTap: () => context.push(action.actionRoute),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(15, 14, 15, 15),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(AppTheme.rMd),
+                    border: Border.all(color: AppColors.borderSoft),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              action.title,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                height: 1.3,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            // Why they are seeing it. Every action has one.
+                            Text(
+                              action.reason,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                height: 1.5,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: AppColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The last few things that happened in this customer's financial life.
+///
+/// Renders nothing at all when there is nothing — no placeholder, no "your
+/// story starts here", no tip. A customer who has just arrived has not done
+/// anything yet, and saying so on the home screen would be filling space
+/// rather than informing them.
+///
+/// Every line is a stored moment. Nothing here is derived from today's
+/// figures, so nothing on this list changes meaning when the figures do.
+class _RecentMoments extends ConsumerWidget {
+  const _RecentMoments();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final moments =
+        ref.watch(intelligenceProvider).value?.recentMoments ?? const [];
+
+    if (moments.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        SectionHeader(
+          title: 'What\'s changed',
+          actionLabel: 'See all',
+          onAction: () => context.push(Routes.financialTimeline),
+        ),
+        for (final moment in moments.take(3))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(15, 13, 15, 14),
+              decoration: BoxDecoration(
+                color: AppColors.surface.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(AppTheme.rMd),
+                border: Border.all(color: AppColors.borderSoft),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    margin: const EdgeInsets.only(top: 6, right: 12),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: moment.isMajor ? AppColors.mint : AppColors.blue,
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          moment.title,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            height: 1.3,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          Fmt.relative(moment.occurredAt),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -877,7 +1059,9 @@ class _GoalProgress extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                goal.isOverdue
+                goal.isComplete
+                    ? 'Goal reached'
+                    : goal.isOverdue
                     ? 'Past its date'
                     : '${goal.monthsRemaining} months left',
                 style: const TextStyle(
@@ -886,17 +1070,22 @@ class _GoalProgress extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Flexible(
-                child: Text(
-                  '${Fmt.money(goal.monthlyRequired)}/mo to stay on track',
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+              // What the monthly amount comes to at the target and date the
+              // customer set. Not a commitment they made, and not a claim
+              // that paying it lands them anywhere — this said "to stay on
+              // track", which is a prediction FynnEdge cannot make.
+              if (!goal.isComplete)
+                Flexible(
+                  child: Text(
+                    '${Fmt.money(goal.monthlyRequired)}/mo at this target',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],

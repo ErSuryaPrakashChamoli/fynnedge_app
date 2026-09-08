@@ -79,5 +79,42 @@ class Routes {
   static const String credit = '/credit';
   static const String privacy = '/privacy';
   static const String privacyAiMemory = '/privacy?section=ai';
+  /// What the customer explored, and what FynnEdge showed them.
+  static const String decisions = '/decisions';
+
+  /// The customer's own request to be shown where they stand. Nothing
+  /// schedules it, nothing records it, and opening it changes nothing.
+  static const String review = '/review';
+
+  /// One exploration, with its explanation.
+  static String decision(String id) => '/decisions/$id';
+
+  /// The customer's financial story — what has actually happened.
+  static const String financialTimeline = '/financial-story';
+
   static const String support = '/support';
+
+  /// One support request.
+  static String supportCase(String id) => '/support/cases/$id';
+
+  /// The request form, optionally opened on a category and a context.
+  ///
+  /// The context travels in the link so support opened from an application
+  /// already knows which one — and the server checks it belongs to the
+  /// customer before anything is attached.
+  static String supportNew({
+    String? category,
+    String? contextType,
+    String? contextId,
+  }) {
+    final query = <String, String>{
+      'category': ?category,
+      'context_type': ?contextType,
+      'context_id': ?contextId,
+    };
+
+    return query.isEmpty
+        ? '/support/new'
+        : '/support/new?${Uri(queryParameters: query).query}';
+  }
 }

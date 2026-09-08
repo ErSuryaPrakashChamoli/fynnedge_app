@@ -223,7 +223,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Please do not submit this again'), findsOneWidget);
-      expect(find.text('Contact support'), findsOneWidget);
+      expect(find.text('Get help'), findsOneWidget);
 
       final text = tester
           .widgetList<Text>(find.byType(Text))

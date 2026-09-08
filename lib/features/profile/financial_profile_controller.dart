@@ -6,6 +6,7 @@ import '../../data/models/user.dart';
 import '../twin/twin_controller.dart';
 import '../../data/services/api_client.dart';
 import '../home/home_controller.dart';
+import '../intelligence/intelligence_controller.dart';
 import '../loans/loan_controller.dart';
 import 'profile_controller.dart';
 
@@ -205,6 +206,12 @@ class FinancialProfileController extends Notifier<FinancialProfileState> {
     ref.invalidate(fynnScoreProvider);
     ref.invalidate(homeSnapshotProvider);
     ref.invalidate(fynnMatchProvider);
+
+      // The plan and Home's next steps are derived from this customer's
+      // current state, so a change to that state makes the previous answer
+      // wrong rather than merely old. Nothing invalidated it, and both
+      // screens went on suggesting a step the customer had just taken.
+    ref.invalidate(intelligenceProvider);
     ref.read(twinControllerProvider.notifier).discardStaleResult();
   }
 

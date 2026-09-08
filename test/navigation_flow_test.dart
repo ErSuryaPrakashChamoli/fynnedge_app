@@ -13,7 +13,7 @@ import 'package:fynnedge/features/profile/goals_screen.dart';
 import 'package:fynnedge/features/profile/notifications_screen.dart';
 import 'package:fynnedge/features/credit/credit_screen.dart';
 import 'package:fynnedge/features/profile/privacy_screen.dart';
-import 'package:fynnedge/features/profile/support_screen.dart';
+import 'package:fynnedge/features/support/support_screen.dart';
 import 'package:fynnedge/features/vault/scan_screen.dart';
 import 'package:fynnedge/features/vault/second_opinion_screen.dart';
 import 'package:fynnedge/features/vault/vault_screen.dart';

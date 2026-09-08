@@ -5,6 +5,7 @@ import '../../core/utils/error_text.dart';
 import '../../data/models/goal.dart';
 import '../../data/services/api_client.dart';
 import '../home/home_controller.dart';
+import '../intelligence/intelligence_controller.dart';
 import 'profile_controller.dart';
 
 /// Everything the Goals screen and its editor need, in one value.
@@ -149,6 +150,11 @@ class GoalsController extends Notifier<GoalsState> {
   void _refreshDependentScreens() {
     ref.invalidate(goalsProvider);
     ref.invalidate(homeSnapshotProvider);
+      // The plan and Home's next steps are derived from this customer's
+      // current state, so a change to that state makes the previous answer
+      // wrong rather than merely old. Nothing invalidated it, and both
+      // screens went on suggesting a step the customer had just taken.
+    ref.invalidate(intelligenceProvider);
   }
 
   /// Clears validation as soon as the customer edits, so a corrected field

@@ -10,10 +10,13 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/entrance.dart';
 import '../../core/widgets/fynn_scaffold.dart';
+
 import '../../core/widgets/sample_data_notice.dart';
 import '../../core/widgets/score_dial.dart';
 import '../../core/widgets/states.dart';
+import '../../core/widgets/get_help.dart';
 import '../../core/widgets/surfaces.dart';
+import '../../data/services/api_config.dart';
 import '../../data/models/score.dart';
 import '../profile/profile_controller.dart';
 import 'score_actions.dart';
@@ -240,10 +243,13 @@ class _Body extends StatelessWidget {
         // what it measures and what it is not.
         const _WhatThisIs(),
         const SizedBox(height: 22),
-        const SampleDataNotice(
-          margin: EdgeInsets.only(bottom: 24),
-          message: SampleDataNotice.seededCustomerMessage,
-        ),
+        // The one notice that genuinely is about mock mode: it speaks about
+        // the customer's own figures being seeded, not about the catalogue.
+        if (ApiConfig.useMock)
+          const SampleDataNotice(
+            margin: EdgeInsets.only(bottom: 24),
+            message: SampleDataNotice.seededCustomerMessage,
+          ),
 
         if (score.helping.isNotEmpty) ...[
           const SectionHeader(title: "What's helping"),
@@ -264,6 +270,13 @@ class _Body extends StatelessWidget {
           ),
           const SizedBox(height: 22),
         ],
+
+        const GetHelpCard(
+          prompt: 'Questions about your FynnScore?',
+          category: 'fynnscore',
+          contextType: 'fynnscore',
+          margin: EdgeInsets.only(bottom: 22),
+        ),
 
         const SectionHeader(
           title: 'The factors behind it',

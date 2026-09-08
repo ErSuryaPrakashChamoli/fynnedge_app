@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fynnedge/features/ai/ai_screen.dart';
 import 'package:fynnedge/features/applications/application_detail_screen.dart';
@@ -9,6 +10,7 @@ import 'package:fynnedge/features/explore/explore_screen.dart';
 import 'package:fynnedge/features/fynnlab/emi_calculator_screen.dart';
 import 'package:fynnedge/features/fynnlab/fynnlab_screen.dart';
 import 'package:fynnedge/features/fynnlab/other_calculators.dart';
+import 'package:fynnedge/data/mock/mock_store.dart';
 import 'package:fynnedge/features/home/home_screen.dart';
 import 'package:fynnedge/features/loans/compare_screen.dart';
 import 'package:fynnedge/features/loans/fynn_mirror_screen.dart';
@@ -24,7 +26,7 @@ import 'package:fynnedge/features/profile/goals_screen.dart';
 import 'package:fynnedge/features/profile/notifications_screen.dart';
 import 'package:fynnedge/features/profile/privacy_screen.dart';
 import 'package:fynnedge/features/profile/profile_screen.dart';
-import 'package:fynnedge/features/profile/support_screen.dart';
+import 'package:fynnedge/features/support/support_screen.dart';
 import 'package:fynnedge/features/score/fynn_score_screen.dart';
 import 'package:fynnedge/features/splash/splash_screen.dart';
 import 'package:fynnedge/features/vault/scan_screen.dart';
@@ -34,7 +36,12 @@ import 'package:fynnedge/features/welcome/welcome_screen.dart';
 
 import 'package:fynnedge/app/session.dart';
 
+import 'package:fynnedge/app/providers.dart';
+
+import 'package:fynnedge/core/utils/clock.dart';
+
 import 'support/harness.dart';
+import 'support/screen_catalog.dart';
 
 /// Two offers already ticked, so the comparison table renders.
 class _PresetCompare extends CompareNotifier {
@@ -46,6 +53,18 @@ class _PresetCompare extends CompareNotifier {
 /// writes a golden PNG to test/goldens. Refresh with:
 ///   flutter test test/screens_test.dart --update-goldens
 void main() {
+  /*
+   * Frozen here rather than in setUpAll, and the difference is a day.
+   *
+   * The groups below call screenCatalog() while the file is being declared,
+   * which happens before any setUpAll runs — so a fixture that read
+   * AppClock.now() to build a goal's target date read the wall clock, and
+   * every golden containing a date drifted the next morning. Freezing is
+   * synchronous, so it can happen here; loading fonts is not, so that stays
+   * where it is.
+   */
+  AppClock.freeze(kTestNow);
+
   setUpAll(initTestEnvironment);
 
   testWidgets('01 splash routes on to Welcome', (tester) async {
@@ -160,15 +179,132 @@ void main() {
     FinancialProfileScreen,
   );
   screenTest('26_goals', () => const GoalsScreen(), GoalsScreen);
+
+  // The financial plan in each state a customer can be in: no goals, one,
+  // a reached one, a strained one, no income at all, and a position that
+  // could not be read.
+  for (final screen in screenCatalog().where(
+    (s) => s.name.startsWith('26') && s.name != '26_goals',
+  )) {
+    screenTest(
+      screen.name,
+      screen.build,
+      screen.type,
+      overrides: screen.overrides,
+    );
+  }
   screenTest(
     '27_notifications',
     () => const NotificationsScreen(),
     NotificationsScreen,
+  );
+
+  // The states that only exist once something has happened: a centre with
+  // unread and read messages grouped, and one that could not be reached.
+  screenTest(
+    '27a_notifications_populated',
+    () => const NotificationsScreen(),
+    NotificationsScreen,
+    overrides: [
+      notificationServiceProvider.overrideWithValue(
+        const PopulatedNotifications(),
+      ),
+    ],
+  );
+  screenTest(
+    '27b_notifications_error',
+    () => const NotificationsScreen(),
+    NotificationsScreen,
+    overrides: [
+      notificationServiceProvider.overrideWithValue(
+        const UnreachableNotifications(),
+      ),
+    ],
   );
   screenTest('28_privacy', () => const PrivacyScreen(), PrivacyScreen);
 
   // Mock mode has no bureau connected, so this golden is the state a
   // customer actually sees today: no score, and a plain explanation of why.
   screenTest('28a_credit', () => const CreditScreen(), CreditScreen);
+  /*
+   * Home with a full plan beneath the primary action.
+   *
+   * Rendered tall on purpose: the plan sits below what a phone viewport
+   * shows, and a golden cut off above it would be a picture of the part
+   * that was already tested.
+   */
+  testWidgets('08a_home_planned', (tester) async {
+    /*
+     * Reset first.
+     *
+     * The mock store is shared across this file and earlier tests add
+     * goals and applications to it, so without this the golden depends on
+     * what ran before it — a 27% pixel difference between running the file
+     * and running the test alone.
+     */
+    MockStore.instance.reset();
+
+    await pumpScreen(
+      tester,
+      const HomeScreen(),
+      overrides: [
+        intelligenceServiceProvider.overrideWithValue(
+          const PlannedIntelligence(),
+        ),
+      ],
+      size: const Size(390, 2200),
+    );
+    await settle(tester);
+
+    // The plan is actually on the screen, not merely in the fixture.
+    expect(find.text('What else you could do'), findsOneWidget);
+    expect(find.text('Look at your savings buffer'), findsOneWidget);
+    expect(find.text('Look again at what you explored'), findsOneWidget);
+
+    await golden(tester, HomeScreen, '08a_home_planned');
+  });
+
+  // What the customer explored, and why FynnEdge showed it.
+  // The financial review, in the states a customer can ask for it in.
+  for (final screen in screenCatalog().where((s) => s.name.startsWith('32'))) {
+    screenTest(
+      screen.name,
+      screen.build,
+      screen.type,
+      overrides: screen.overrides,
+    );
+  }
+
+  for (final screen in screenCatalog().where((s) => s.name.startsWith('31'))) {
+    screenTest(
+      screen.name,
+      screen.build,
+      screen.type,
+      overrides: screen.overrides,
+    );
+  }
+
+  // The financial story: populated, empty, and unreachable.
+  for (final screen in screenCatalog().where((s) => s.name.startsWith('30'))) {
+    screenTest(
+      screen.name,
+      screen.build,
+      screen.type,
+      overrides: screen.overrides,
+    );
+  }
+
   screenTest('29_support', () => const SupportScreen(), SupportScreen);
+
+  // The states that only exist once a customer has asked for something.
+  for (final screen in screenCatalog().where(
+    (s) => s.name.startsWith('29') && s.name != '29_support',
+  )) {
+    screenTest(
+      screen.name,
+      screen.build,
+      screen.type,
+      overrides: screen.overrides,
+    );
+  }
 }

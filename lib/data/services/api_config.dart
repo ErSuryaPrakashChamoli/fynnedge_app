@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Single switch that decides where every repository gets its data.
 ///
 /// To go live against the real backend:
@@ -57,4 +59,39 @@ class ApiConfig {
   static Uri uri(String path, [Map<String, dynamic>? query]) => Uri.parse(
     '$baseUrl$apiPrefix$path',
   ).replace(queryParameters: query?.map((k, v) => MapEntry(k, v.toString())));
+
+  /// Why a release build must not start, or null when it may.
+  ///
+  /// Both defaults here are development defaults, and they have to be: a
+  /// checkout should run against a local API without anyone editing a file.
+  /// The consequence is that `flutter build apk --release` with no
+  /// --dart-define produces a *release* artifact running entirely on mock
+  /// data — a fictional customer, six fictional lenders and a score
+  /// calculated from invented figures — and that is exactly the build a
+  /// hurried release would upload.
+  ///
+  /// So a release binary refuses to run unless the two decisions have been
+  /// made. It is the same choice LogOtpSender makes on the server: a build
+  /// that reaches production without being configured should fail loudly
+  /// rather than quietly hand out something that looks real.
+  ///
+  /// Checked at startup rather than at compile time because Dart cannot
+  /// fail a build on a const value; the failure is as early as it can be,
+  /// and it names what is missing.
+  static String? releaseConfigurationError() {
+    if (!kReleaseMode) return null;
+
+    if (useMock) {
+      return 'This release build is running on sample data. Build with '
+          '--dart-define=FYNN_USE_MOCK=false.';
+    }
+
+    if (!Uri.parse(baseUrl).isScheme('https')) {
+      return 'This release build would send customer data to $baseUrl over '
+          'an unencrypted connection. Build with '
+          '--dart-define=FYNN_API_BASE=https://...';
+    }
+
+    return null;
+  }
 }

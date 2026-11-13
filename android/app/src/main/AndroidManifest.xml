@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The debug and profile manifests declare this for tooling, which hides
+         its absence here: without it every API call in a release build fails. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="fynnedge"
         android:name="${applicationName}"

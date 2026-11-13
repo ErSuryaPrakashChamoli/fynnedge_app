@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 
 /// Single switch that decides where every repository gets its data.
 ///
-/// To go live against the real backend:
+/// To go live against the real backend, set both values in `.env` and run:
+///   flutter run --dart-define-from-file=.env
+/// or pass them directly:
 ///   flutter run --dart-define=FYNN_USE_MOCK=false \
 ///               --dart-define=FYNN_API_BASE=https://api.fynnedge.com
 ///

@@ -1,4 +1,4 @@
-package com.fynnedge.fynnedge
+package com.fynnedge.app
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -68,6 +68,28 @@ class AiProviderInfo {
   };
 }
 
+/// Whether FynnAI can answer right now, from `GET /ai/status`.
+///
+/// A yes or no and the provider description. Where the engine runs and how
+/// it is doing inside stay on the server.
+class AiStatus {
+  const AiStatus({
+    required this.online,
+    this.provider = const AiProviderInfo(),
+    this.checkedAt,
+  });
+
+  final bool online;
+  final AiProviderInfo provider;
+  final DateTime? checkedAt;
+
+  factory AiStatus.fromJson(Map<String, dynamic> json) => AiStatus(
+    online: J.boolean(json['online']),
+    provider: AiProviderInfo.fromJson(J.map(json['provider'])),
+    checkedAt: J.date(json['checked_at']),
+  );
+}
+
 /// An action chip the assistant can offer (deep-links into a tool/screen).
 class ChatAction {
   const ChatAction({required this.label, required this.route, this.icon});

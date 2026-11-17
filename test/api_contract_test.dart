@@ -1027,15 +1027,12 @@ void main() {
       final profile = await ApiProfileService(api).getFinancialProfile();
       final score = await ApiProfileService(api).getFynnScore();
 
-      final conversation = await ai.startConversation();
-      expect(conversation.id, isNotEmpty);
-
       // A question about the customer's own score is answered from the real
-      // score object, not from a number the assistant chose.
-      final scoreReply = await ai.send(
-        conversationId: conversation.id,
-        text: 'Explain my FynnScore',
-      );
+      // score object, not from a number the assistant chose. With no id the
+      // server starts the conversation and says which it is.
+      final scoreReply = await ai.chat('Explain my FynnScore');
+      final conversationId = scoreReply.conversationId;
+      expect(conversationId, isNotEmpty);
       expect(scoreReply.message.text, contains('${score.score}'));
       expect(scoreReply.provider.available, isTrue);
       // The assistant FynnEdge ships is rules, and says so.
@@ -1043,9 +1040,9 @@ void main() {
 
       // Affordability comes from the engines, against the customer's real
       // income — and never claims a lender decision.
-      final affordability = await ai.send(
-        conversationId: conversation.id,
-        text: 'Can I afford a 10 lakh loan?',
+      final affordability = await ai.chat(
+        'Can I afford a 10 lakh loan?',
+        conversationId: conversationId,
       );
       expect(affordability.message.text, contains('13.25%'));
       expect(affordability.message.text, contains('not a lender rule'));
@@ -1057,7 +1054,7 @@ void main() {
       }
 
       // Both sides of the exchange are kept, and nothing else is.
-      final stored = await ai.getConversation(conversation.id);
+      final stored = await ai.getConversation(conversationId);
       expect(stored.messages, hasLength(4));
       expect(stored.messages.first.role, ChatRole.user);
       // Only the two roles a customer's transcript can contain — a system
@@ -1067,9 +1064,9 @@ void main() {
       }
 
       // The document boundary holds against the live API.
-      final documents = await ai.send(
-        conversationId: conversation.id,
-        text: 'What does my bank statement say?',
+      final documents = await ai.chat(
+        'What does my bank statement say?',
+        conversationId: conversationId,
       );
       expect(
         documents.message.text,
@@ -1079,9 +1076,9 @@ void main() {
         ),
       );
 
-      await ai.deleteConversation(conversation.id);
+      await ai.deleteConversation(conversationId);
       await expectLater(
-        ai.getConversation(conversation.id),
+        ai.getConversation(conversationId),
         throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 404)),
       );
 
@@ -1109,6 +1106,22 @@ void main() {
     expect(
       (context['provider'] as Map<String, dynamic>)['is_language_model'],
       isFalse,
+    );
+  }, skip: skip);
+
+  test('FynnAI reports whether it can answer', () async {
+    final status = await ApiAiService(api).getStatus();
+
+    // A yes or no and the provider description — nothing about where the
+    // engine runs.
+    expect(status.provider.name, isNotEmpty);
+    expect(status.checkedAt, isNotNull);
+  }, skip: skip);
+
+  test('continuing someone else\'s conversation is a 404', () async {
+    await expectLater(
+      ApiAiService(api).chat('Hello', conversationId: '999999'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 404)),
     );
   }, skip: skip);
 

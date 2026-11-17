@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/ai/ai_screen.dart';
+import '../features/ai/conversations_screen.dart';
 import '../features/applications/application_detail_screen.dart';
 import '../features/applications/applications_screen.dart';
 import '../features/auth/login_screen.dart';
@@ -101,7 +102,24 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             navigatorKey: _aiKey,
-            routes: [GoRoute(path: '/ai', builder: (_, _) => const AiScreen())],
+            routes: [
+              GoRoute(
+                path: '/ai',
+                builder: (_, _) => const AiScreen(),
+                routes: [
+                  // Over the shell, like every other pushed screen, with the
+                  // conversation still underneath to come back to.
+                  GoRoute(
+                    path: 'history',
+                    parentNavigatorKey: _rootKey,
+                    pageBuilder: (context, state) => fadeThrough(
+                      child: const ConversationsScreen(),
+                      state: state,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           StatefulShellBranch(
             navigatorKey: _activityKey,

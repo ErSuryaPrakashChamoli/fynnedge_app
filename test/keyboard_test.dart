@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fynnedge/features/ai/ai_screen.dart';
 import 'package:fynnedge/features/auth/login_screen.dart';
 import 'package:fynnedge/features/auth/otp_screen.dart';
 import 'package:fynnedge/features/onboarding/basic_profile_screen.dart';
@@ -20,6 +21,7 @@ void main() {
     'otp': () => const OtpScreen(devHint: '123456'),
     'basic profile': () => const BasicProfileScreen(),
     'financial profile': () => const FinancialProfileScreen(),
+    'fynnai': () => const AiScreen(),
   };
 
   for (final entry in screens.entries) {

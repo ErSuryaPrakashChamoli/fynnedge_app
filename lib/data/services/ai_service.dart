@@ -5,6 +5,7 @@ import '../../core/utils/formatters.dart';
 import '../engine/financial_engine.dart';
 import '../mock/mock_store.dart';
 import '../models/chat.dart';
+import '../models/json.dart';
 import '../score/fynn_score_engine.dart';
 import 'api_client.dart';
 import 'api_config.dart';
@@ -13,10 +14,15 @@ import 'finance_service.dart';
 /// One answer, with what the screen shows around it.
 class AiReply {
   const AiReply({
+    required this.conversationId,
     required this.message,
     this.suggestions = const [],
     this.provider = const AiProviderInfo(),
   });
+
+  /// The conversation the answer belongs to. Assigned by the server on the
+  /// first message of a new chat; the app never makes one up.
+  final String conversationId;
 
   final ChatMessage message;
   final List<String> suggestions;
@@ -28,12 +34,24 @@ class AiReply {
 /// The provider behind this — a hosted model, a self-hosted one, or the
 /// deterministic assistant FynnEdge ships — is invisible to the UI.
 abstract class AiService {
+  /// Whether FynnAI can answer right now.
+  Future<AiStatus> getStatus();
+
   Future<List<Conversation>> getConversations();
   Future<Conversation> getConversation(String id);
-  Future<Conversation> startConversation();
   Future<void> deleteConversation(String id);
-  Future<AiReply> send({required String conversationId, required String text});
+
+  /// Answers [message].
+  ///
+  /// Without [conversationId] the server starts a conversation and returns
+  /// its id; with one, the message continues that conversation. A failed
+  /// answer records nothing on the server.
+  Future<AiReply> chat(String message, {String? conversationId});
 }
+
+/// What the mock assistant decides to say, before it is attached to a
+/// conversation.
+typedef _Answer = ({ChatMessage message, List<String> suggestions});
 
 /// Mock mode's assistant.
 ///
@@ -55,6 +73,16 @@ class MockAiService implements AiService {
   );
 
   @override
+  Future<AiStatus> getStatus() async {
+    await ApiConfig.pauseFast();
+    return AiStatus(
+      online: true,
+      provider: provider,
+      checkedAt: AppClock.now(),
+    );
+  }
+
+  @override
   Future<List<Conversation>> getConversations() async {
     await ApiConfig.pauseFast();
     return _store.conversations;
@@ -67,9 +95,49 @@ class MockAiService implements AiService {
   }
 
   @override
-  Future<Conversation> startConversation() async {
+  Future<void> deleteConversation(String id) async {
     await ApiConfig.pauseFast();
+    _find(id);
+    _store.removeConversation(id);
+  }
 
+  @override
+  Future<AiReply> chat(String message, {String? conversationId}) async {
+    await ApiConfig.pause();
+
+    // As on the server: no id starts a conversation, an id must exist.
+    final conversation = conversationId == null
+        ? _start()
+        : _find(conversationId);
+    final now = AppClock.now();
+
+    final question = ChatMessage(
+      id: 'msg_${now.microsecondsSinceEpoch}_u',
+      role: ChatRole.user,
+      text: message,
+      at: now,
+    );
+
+    final answer = _answer(message, now);
+
+    _store.replaceConversation(
+      conversation.copyWith(
+        title: conversation.messages.isEmpty
+            ? _title(message)
+            : conversation.title,
+        messages: [...conversation.messages, question, answer.message],
+      ),
+    );
+
+    return AiReply(
+      conversationId: conversation.id,
+      message: answer.message,
+      suggestions: answer.suggestions,
+      provider: provider,
+    );
+  }
+
+  Conversation _start() {
     final conversation = Conversation(
       id: _store.nextConversationId(),
       title: 'New conversation',
@@ -79,47 +147,9 @@ class MockAiService implements AiService {
     return conversation;
   }
 
-  @override
-  Future<void> deleteConversation(String id) async {
-    await ApiConfig.pauseFast();
-    _find(id);
-    _store.removeConversation(id);
-  }
-
-  @override
-  Future<AiReply> send({
-    required String conversationId,
-    required String text,
-  }) async {
-    await ApiConfig.pause();
-
-    final conversation = _find(conversationId);
-    final now = AppClock.now();
-
-    final question = ChatMessage(
-      id: 'msg_${now.microsecondsSinceEpoch}_u',
-      role: ChatRole.user,
-      text: text,
-      at: now,
-    );
-
-    final answer = _answer(text, now);
-
-    _store.replaceConversation(
-      conversation.copyWith(
-        title: conversation.messages.isEmpty
-            ? _title(text)
-            : conversation.title,
-        messages: [...conversation.messages, question, answer.message],
-      ),
-    );
-
-    return answer;
-  }
-
   // --- Answers, from the customer's real figures ---------------------------
 
-  AiReply _answer(String text, DateTime now) {
+  _Answer _answer(String text, DateTime now) {
     final q = text.toLowerCase();
 
     if (_asks(q, const [
@@ -145,7 +175,7 @@ class MockAiService implements AiService {
     return _fallback(now);
   }
 
-  AiReply _summary(DateTime now) {
+  _Answer _summary(DateTime now) {
     final snapshot = _store.snapshot;
 
     if (!snapshot.hasIncome) {
@@ -173,7 +203,7 @@ class MockAiService implements AiService {
     );
   }
 
-  AiReply _score(DateTime now) {
+  _Answer _score(DateTime now) {
     final score = fynnScoreEngine.score(_store.snapshot);
 
     if (!score.hasScore) {
@@ -197,14 +227,17 @@ class MockAiService implements AiService {
     return _reply(
       buffer.toString(),
       now,
-      suggestions: const ['How do I improve it?', 'How am I doing financially?'],
+      suggestions: const [
+        'How do I improve it?',
+        'How am I doing financially?',
+      ],
       actions: const [
         ChatAction(label: 'Open FynnScore', route: Routes.fynnScore),
       ],
     );
   }
 
-  AiReply _affordability(String text, DateTime now) {
+  _Answer _affordability(String text, DateTime now) {
     final snapshot = _store.snapshot;
 
     if (!snapshot.hasIncome) {
@@ -273,7 +306,7 @@ class MockAiService implements AiService {
     );
   }
 
-  AiReply _goals(DateTime now) {
+  _Answer _goals(DateTime now) {
     final goals = _store.goals;
 
     if (goals.isEmpty) {
@@ -305,7 +338,7 @@ class MockAiService implements AiService {
     );
   }
 
-  AiReply _applications(DateTime now) {
+  _Answer _applications(DateTime now) {
     final applications = _store.applications;
 
     if (applications.isEmpty) {
@@ -347,7 +380,7 @@ class MockAiService implements AiService {
   }
 
   /// What is in the vault, and the hard line at its contents.
-  AiReply _documents(DateTime now) {
+  _Answer _documents(DateTime now) {
     final documents = _store.documents;
 
     if (documents.isEmpty) {
@@ -383,7 +416,7 @@ class MockAiService implements AiService {
     );
   }
 
-  AiReply _fallback(DateTime now) => _reply(
+  _Answer _fallback(DateTime now) => _reply(
     'I can work with your own figures — what you earn, what goes out, your '
     'goals, your FynnScore, and anything you have applied for.\n\nTell me '
     'what you are trying to work out.',
@@ -398,7 +431,7 @@ class MockAiService implements AiService {
     ],
   );
 
-  AiReply _needsProfile(String why, DateTime now) => _reply(
+  _Answer _needsProfile(String why, DateTime now) => _reply(
     '$why Add it to your Financial Profile and I can use it.',
     now,
     suggestions: const ['What counts as income?'],
@@ -407,12 +440,12 @@ class MockAiService implements AiService {
     ],
   );
 
-  AiReply _reply(
+  _Answer _reply(
     String text,
     DateTime now, {
     List<String> suggestions = const [],
     List<ChatAction> actions = const [],
-  }) => AiReply(
+  }) => (
     message: ChatMessage(
       id: 'msg_${now.microsecondsSinceEpoch}_a',
       role: ChatRole.assistant,
@@ -422,16 +455,14 @@ class MockAiService implements AiService {
       actions: actions,
     ),
     suggestions: suggestions,
-    provider: provider,
   );
 
   Conversation _find(String id) {
     final match = _store.conversations.where((c) => c.id == id);
     if (match.isEmpty) {
-      throw ApiException(
-        'That conversation could not be found.',
-        statusCode: 404,
-      );
+      // The same type the API client raises for a 404, so callers handle
+      // mock and live the same way.
+      throw NotFoundException('That conversation could not be found.');
     }
     return match.first;
   }
@@ -461,49 +492,80 @@ class MockAiService implements AiService {
   }
 }
 
+/// FynnAI through Laravel.
+///
+/// Every call goes to the FynnEdge API with the customer's token; the app
+/// never talks to the engine behind it. Paths are relative to the API prefix
+/// [ApiConfig.uri] already adds, and [ApiClient] unwraps Laravel's `data`.
 class ApiAiService implements AiService {
   ApiAiService(this._api);
   final ApiClient _api;
 
   @override
-  Future<List<Conversation>> getConversations() async =>
-      (await _api.get('/ai/conversations') as List)
-          .map((e) => Conversation.fromJson(e as Map<String, dynamic>))
-          .toList();
+  Future<AiStatus> getStatus() async =>
+      AiStatus.fromJson(_object(await _api.get('/ai/status')));
 
   @override
-  Future<Conversation> getConversation(String id) async =>
-      Conversation.fromJson(
-        await _api.get('/ai/conversations/$id') as Map<String, dynamic>,
-      );
+  Future<List<Conversation>> getConversations() async {
+    final body = await _api.get('/ai/conversations');
+    if (body is! List) throw ServerException();
+    return J.objects(body, Conversation.fromJson);
+  }
 
   @override
-  Future<Conversation> startConversation() async => Conversation.fromJson(
-    await _api.post('/ai/conversations') as Map<String, dynamic>,
-  );
+  Future<Conversation> getConversation(String id) async {
+    final conversation = Conversation.fromJson(
+      _object(await _api.get('/ai/conversations/$id')),
+    );
+    if (conversation.id.isEmpty) throw ServerException();
+    return conversation;
+  }
 
   @override
   Future<void> deleteConversation(String id) =>
       _api.delete('/ai/conversations/$id');
 
   @override
-  Future<AiReply> send({
-    required String conversationId,
-    required String text,
-  }) async {
-    final data =
-        await _api.post(
-              '/ai/conversations/$conversationId/messages',
-              body: {'text': text},
-            )
-            as Map<String, dynamic>;
-
-    return AiReply(
-      message: ChatMessage.fromJson(data),
-      suggestions: (data['suggestions'] as List?)?.cast<String>() ?? const [],
-      provider: AiProviderInfo.fromJson(
-        (data['provider'] as Map<String, dynamic>?) ?? const {},
+  Future<AiReply> chat(String message, {String? conversationId}) async {
+    final data = _object(
+      await _api.post(
+        '/ai/chat',
+        body: {'message': message, 'conversation_id': ?conversationId},
       ),
     );
+
+    // Without these the answer cannot be placed in a conversation, and
+    // continuing would silently start a new one.
+    final id = J.strOrNull(data['conversation_id']);
+    if (id == null || !data.containsKey('ai_response')) {
+      throw ServerException();
+    }
+
+    final suggestions = J.strings(data['suggestions']);
+
+    return AiReply(
+      conversationId: id,
+      message: ChatMessage(
+        id: J.str(data['message_id'], 'reply_$id'),
+        role: ChatRole.assistant,
+        text: J.str(data['ai_response']).trim(),
+        at: J.date(data['at'])?.toLocal() ?? AppClock.now(),
+        suggestions: suggestions,
+        // An action the app cannot open is not offered.
+        actions: J
+            .objects(data['actions'], ChatAction.fromJson)
+            .where((a) => a.label.isNotEmpty && a.route.startsWith('/'))
+            .toList(),
+      ),
+      suggestions: suggestions,
+      provider: AiProviderInfo.fromJson(J.map(data['provider'])),
+    );
+  }
+
+  /// A JSON object, or a server fault: an answer in some other shape is not
+  /// something the app can show.
+  static Map<String, dynamic> _object(Object? body) {
+    if (body is! Map) throw ServerException();
+    return J.map(body);
   }
 }

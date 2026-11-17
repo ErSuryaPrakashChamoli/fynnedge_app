@@ -23,6 +23,7 @@ void main() {
     Routes.home,
     Routes.explore,
     Routes.ai,
+    Routes.aiHistory,
     Routes.applications,
     Routes.profile,
     Routes.loanDiscovery,

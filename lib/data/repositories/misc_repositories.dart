@@ -45,19 +45,17 @@ class AiRepository {
   AiRepository(this._service);
   final AiService _service;
 
+  Future<AiStatus> status() => _service.getStatus();
+
   Future<List<Conversation>> conversations() => _service.getConversations();
 
-  Future<Conversation> conversation(String id) =>
-      _service.getConversation(id);
-
-  Future<Conversation> start() => _service.startConversation();
+  Future<Conversation> conversation(String id) => _service.getConversation(id);
 
   Future<void> delete(String id) => _service.deleteConversation(id);
 
-  Future<AiReply> send({
-    required String conversationId,
-    required String text,
-  }) => _service.send(conversationId: conversationId, text: text);
+  /// One message. No [conversationId] starts a conversation on the server.
+  Future<AiReply> chat(String message, {String? conversationId}) =>
+      _service.chat(message, conversationId: conversationId);
 }
 
 /// What the customer explored, and why FynnEdge showed what it did.

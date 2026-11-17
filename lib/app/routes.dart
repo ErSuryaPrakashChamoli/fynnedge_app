@@ -19,6 +19,9 @@ class Routes {
   static const String home = '/home';
   static const String explore = '/explore';
   static const String ai = '/ai';
+
+  /// The customer's earlier FynnAI conversations.
+  static const String aiHistory = '/ai/history';
   static const String applications = '/applications';
   static const String profile = '/profile';
 
